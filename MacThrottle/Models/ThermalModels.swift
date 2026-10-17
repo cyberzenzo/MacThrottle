@@ -36,6 +36,35 @@ enum ThermalPressure: String, Codable {
         case .unknown: return .gray
         }
     }
+
+    /// Ordering used to keep the worst state when history is aggregated.
+    var severity: Int {
+        switch self {
+        case .unknown: return 0
+        case .nominal: return 1
+        case .moderate: return 2
+        case .heavy: return 3
+        case .critical: return 4
+        }
+    }
+}
+
+enum HistoryRange: String, CaseIterable, Identifiable {
+    case tenMinutes = "10m"
+    case oneHour = "1h"
+    case sixHours = "6h"
+    case day = "24h"
+
+    var id: String { rawValue }
+
+    var duration: TimeInterval {
+        switch self {
+        case .tenMinutes: return 600
+        case .oneHour: return 3600
+        case .sixHours: return 6 * 3600
+        case .day: return 24 * 3600
+        }
+    }
 }
 
 struct HistoryEntry {

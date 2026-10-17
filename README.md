@@ -15,8 +15,9 @@ A lightweight macOS menu bar app that monitors thermal pressure and alerts you w
 - Displays thermal pressure state in the menu bar using different thermometer icons
 - Shows CPU core temperature (reads directly from SMC)
 - Shows fan speed percentage (on Macs with fans)
-- History graph showing thermal state, temperature, and fan speed over the last 10 minutes
-- Statistics showing time spent in each thermal state
+- History graph showing thermal state, temperature, and fan speed over the last 10 minutes, 1, 6 or 24 hours
+- History is saved to `~/Library/Application Support/MacThrottle/history.csv`, so it survives restarts; sleep shows as a gap
+- Statistics showing time spent in each thermal state for the selected range
 - Configurable notifications:
   - When heavy throttling begins
   - When critical throttling occurs
@@ -72,6 +73,13 @@ open build/Build/Products/Release/MacThrottle.app
 ```
 
 Or open `MacThrottle.xcodeproj` in Xcode and press `Cmd+R` to build and run.
+
+Without Xcode (Command Line Tools only, ad-hoc signed):
+
+```bash
+./scripts/build-cli.sh
+open .build-cli/MacThrottle.app
+```
 
 ## How It Works
 

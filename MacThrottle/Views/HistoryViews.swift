@@ -17,6 +17,8 @@ struct HistoryGraphView: View {
     // MARK: - Properties
     let history: [HistoryEntry]
     var showFanSpeed: Bool = true
+    /// Samples further apart than this are drawn as a gap (sleep, app not running).
+    var maxGap: TimeInterval = 10
     @State private var hoverLocation: CGPoint?
 
     private var historyDuration: TimeInterval {
@@ -24,39 +26,81 @@ struct HistoryGraphView: View {
         return Date().timeIntervalSince(first.timestamp)
     }
 
-    private var downsampledHistory: [HistoryEntry] {
-        guard history.count > Self.maxPoints else { return history }
+    /// Time covered by one downsampled point (0 when the history is not downsampled).
+    private var bucketDuration: TimeInterval {
+        guard history.count > Self.maxPoints, let first = history.first, let last = history.last else { return 0 }
+        return last.timestamp.timeIntervalSince(first.timestamp) / Double(Self.maxPoints)
+    }
 
-        let step = Double(history.count) / Double(Self.maxPoints)
+    private var isAggregated: Bool {
+        bucketDuration > 0
+    }
+
+    /// Consecutive points further apart than this are separated by a gap.
+    private var gapThreshold: TimeInterval {
+        max(maxGap, bucketDuration * 2)
+    }
+
+    /// Aggregates the history into at most `maxPoints` time buckets. Each bucket keeps the worst
+    /// pressure and the peak temperature and fan speed, so short throttling spikes stay visible.
+    private func downsample() -> [HistoryEntry] {
+        let bucketDuration = bucketDuration
+        guard bucketDuration > 0, let first = history.first else { return history }
+
         var result: [HistoryEntry] = []
         result.reserveCapacity(Self.maxPoints)
+        var current: HistoryEntry?
+        var currentBucket = -1
 
-        for i in 0..<Self.maxPoints {
-            let index = min(Int(Double(i) * step), history.count - 1)
-            result.append(history[index])
+        for entry in history {
+            let bucket = min(Int(entry.timestamp.timeIntervalSince(first.timestamp) / bucketDuration), Self.maxPoints - 1)
+            if bucket != currentBucket, let finished = current {
+                result.append(finished)
+                current = nil
+            }
+            currentBucket = bucket
+
+            if let existing = current {
+                current = HistoryEntry(
+                    pressure: entry.pressure.severity > existing.pressure.severity ? entry.pressure : existing.pressure,
+                    temperature: peak(existing.temperature, entry.temperature),
+                    fanSpeed: peak(existing.fanSpeed, entry.fanSpeed),
+                    timestamp: existing.timestamp
+                )
+            } else {
+                current = entry
+            }
         }
-
-        if let last = history.last, result.last?.timestamp != last.timestamp {
-            result[result.count - 1] = last
+        if let current {
+            result.append(current)
         }
 
         return result
     }
 
-    private var temperatureRange: (min: Double, max: Double) {
-        let temps = downsampledHistory.compactMap { $0.temperature }
+    private func peak(_ lhs: Double?, _ rhs: Double?) -> Double? {
+        guard let lhs else { return rhs }
+        guard let rhs else { return lhs }
+        return max(lhs, rhs)
+    }
+
+    private func temperatureRange(_ sampled: [HistoryEntry]) -> (min: Double, max: Double) {
+        let temps = sampled.compactMap { $0.temperature }
         guard !temps.isEmpty else { return (Self.minTemperatureBound, 100) }
         let minTemp = max(Self.minTemperatureBound, (temps.min() ?? Self.minTemperatureBound) - Self.temperaturePadding)
         let maxTemp = min(Self.maxTemperatureBound, (temps.max() ?? 100) + Self.temperaturePadding)
         return (minTemp, maxTemp)
     }
 
-    private var hasFanData: Bool {
-        showFanSpeed && downsampledHistory.contains { $0.fanSpeed != nil }
+    private func hasFanData(_ sampled: [HistoryEntry]) -> Bool {
+        showFanSpeed && sampled.contains { $0.fanSpeed != nil }
     }
 
-    private func yPositionForTemperature(_ temp: Double, height: CGFloat) -> CGFloat {
-        let range = temperatureRange
+    private func yPositionForTemperature(
+        _ temp: Double,
+        range: (min: Double, max: Double),
+        height: CGFloat
+    ) -> CGFloat {
         let padding: CGFloat = 4
         let normalized = (temp - range.min) / (range.max - range.min)
         return padding + (1.0 - CGFloat(normalized)) * (height - padding * 2)
@@ -68,8 +112,12 @@ struct HistoryGraphView: View {
         return padding + (1.0 - CGFloat(normalized)) * (height - padding * 2)
     }
 
-    private func entryAt(x: CGFloat, width: CGFloat) -> (entry: HistoryEntry, xPosition: CGFloat)? {
-        guard history.count >= 2, let first = history.first else { return nil }
+    private func entryAt(
+        x: CGFloat,
+        width: CGFloat,
+        in sampled: [HistoryEntry]
+    ) -> (entry: HistoryEntry, xPosition: CGFloat)? {
+        guard sampled.count >= 2, let first = sampled.first else { return nil }
         let totalDuration = Date().timeIntervalSince(first.timestamp)
         guard totalDuration > 0 else { return nil }
 
@@ -77,9 +125,12 @@ struct HistoryGraphView: View {
         let targetTime = first.timestamp.addingTimeInterval(totalDuration * fraction)
 
         // Find the closest entry to the target time
-        guard let closest = history.min(by: {
+        guard let closest = sampled.min(by: {
             abs($0.timestamp.timeIntervalSince(targetTime)) < abs($1.timestamp.timeIntervalSince(targetTime))
         }) else { return nil }
+
+        // Nothing to show while hovering over a gap
+        guard abs(closest.timestamp.timeIntervalSince(targetTime)) <= gapThreshold else { return nil }
 
         let entryX = CGFloat(closest.timestamp.timeIntervalSince(first.timestamp) / totalDuration) * width
         return (closest, entryX)
@@ -88,14 +139,16 @@ struct HistoryGraphView: View {
     @State private var graphWidth: CGFloat = 220
 
     var body: some View {
+        let sampled = downsample()
+
         VStack(spacing: 2) {
-            graphView
+            graphView(sampled)
                 .background(GeometryReader { geo in
                     Color.clear.preference(key: WidthPreferenceKey.self, value: geo.size.width)
                 })
                 .onPreferenceChange(WidthPreferenceKey.self) { graphWidth = $0 }
                 .overlay(alignment: .topTrailing) {
-                    tooltipView
+                    tooltipView(sampled)
                         .allowsHitTesting(false)
                 }
 
@@ -109,9 +162,15 @@ struct HistoryGraphView: View {
         }
     }
 
-    private var graphView: some View {
-        Canvas { context, size in
-            let sampled = downsampledHistory
+    private func graphView(_ sampled: [HistoryEntry]) -> some View {
+        let latest = history.last
+        let range = temperatureRange(sampled)
+        let showFan = hasFanData(sampled)
+        let gapThreshold = gapThreshold
+        // How far a point before a gap extends to the right
+        let pointDuration = max(maxGap / 5, bucketDuration)
+
+        return Canvas { context, size in
             guard sampled.count >= 2 else { return }
 
             guard let firstEntry = sampled.first else { return }
@@ -121,45 +180,63 @@ struct HistoryGraphView: View {
 
             guard totalDuration > 0 else { return }
 
-            // Draw thermal pressure background as merged segments by pressure state
+            func xPosition(_ date: Date) -> CGFloat {
+                CGFloat(date.timeIntervalSince(startTime) / totalDuration) * size.width
+            }
+
+            func isGap(before index: Int) -> Bool {
+                index > 0 && sampled[index].timestamp.timeIntervalSince(sampled[index - 1].timestamp) > gapThreshold
+            }
+
+            // Draw thermal pressure background as merged segments by pressure state, leaving gaps empty
+            func fillSegment(from start: CGFloat, to end: CGFloat, pressure: ThermalPressure) {
+                let rect = CGRect(x: start, y: 0, width: end - start, height: size.height)
+                context.fill(Path(rect), with: .color(pressure.color.opacity(0.3)))
+            }
+
             var currentPressure = sampled[0].pressure
             var segmentStart: CGFloat = 0
 
-            for i in 0..<sampled.count {
+            for i in 1..<sampled.count {
                 let entry = sampled[i]
-                let x = CGFloat(entry.timestamp.timeIntervalSince(startTime) / totalDuration) * size.width
+                let x = xPosition(entry.timestamp)
 
-                if entry.pressure != currentPressure {
-                    let rect = CGRect(x: segmentStart, y: 0, width: x - segmentStart, height: size.height)
-                    context.fill(Path(rect), with: .color(currentPressure.color.opacity(0.3)))
+                if isGap(before: i) {
+                    let previousEnd = xPosition(sampled[i - 1].timestamp.addingTimeInterval(pointDuration))
+                    fillSegment(from: segmentStart, to: previousEnd, pressure: currentPressure)
+                    currentPressure = entry.pressure
+                    segmentStart = x
+                } else if entry.pressure != currentPressure {
+                    fillSegment(from: segmentStart, to: x, pressure: currentPressure)
                     currentPressure = entry.pressure
                     segmentStart = x
                 }
             }
             // Draw final segment to end
-            let finalRect = CGRect(x: segmentStart, y: 0, width: size.width - segmentStart, height: size.height)
-            context.fill(Path(finalRect), with: .color(currentPressure.color.opacity(0.3)))
+            fillSegment(from: segmentStart, to: size.width, pressure: currentPressure)
 
-            // Draw temperature line
+            // Draw temperature line, broken at gaps
             var tempPath = Path()
-            var firstPoint = true
+            var startNewSubpath = true
 
-            for entry in sampled {
+            for (i, entry) in sampled.enumerated() {
                 guard let temp = entry.temperature else { continue }
 
-                let x = CGFloat(entry.timestamp.timeIntervalSince(startTime) / totalDuration) * size.width
-                let y = yPositionForTemperature(temp, height: size.height)
+                let point = CGPoint(
+                    x: xPosition(entry.timestamp),
+                    y: yPositionForTemperature(temp, range: range, height: size.height)
+                )
 
-                if firstPoint {
-                    tempPath.move(to: CGPoint(x: x, y: y))
-                    firstPoint = false
+                if startNewSubpath || isGap(before: i) {
+                    tempPath.move(to: point)
+                    startNewSubpath = false
                 } else {
-                    tempPath.addLine(to: CGPoint(x: x, y: y))
+                    tempPath.addLine(to: point)
                 }
             }
 
-            if let last = sampled.last, let temp = last.temperature {
-                let y = yPositionForTemperature(temp, height: size.height)
+            if let temp = latest?.temperature {
+                let y = yPositionForTemperature(temp, range: range, height: size.height)
                 tempPath.addLine(to: CGPoint(x: size.width, y: y))
             }
 
@@ -167,25 +244,27 @@ struct HistoryGraphView: View {
 
             // Draw fan speed line (if data available)
             let fanColor = Color.cyan
-            if hasFanData {
+            if showFan {
                 var fanPath = Path()
-                var firstFanPoint = true
+                var startNewFanSubpath = true
 
-                for entry in sampled {
+                for (i, entry) in sampled.enumerated() {
                     guard let fan = entry.fanSpeed else { continue }
 
-                    let x = CGFloat(entry.timestamp.timeIntervalSince(startTime) / totalDuration) * size.width
-                    let y = yPositionForFanSpeed(fan, height: size.height)
+                    let point = CGPoint(
+                        x: xPosition(entry.timestamp),
+                        y: yPositionForFanSpeed(fan, height: size.height)
+                    )
 
-                    if firstFanPoint {
-                        fanPath.move(to: CGPoint(x: x, y: y))
-                        firstFanPoint = false
+                    if startNewFanSubpath || isGap(before: i) {
+                        fanPath.move(to: point)
+                        startNewFanSubpath = false
                     } else {
-                        fanPath.addLine(to: CGPoint(x: x, y: y))
+                        fanPath.addLine(to: point)
                     }
                 }
 
-                if let last = sampled.last, let fan = last.fanSpeed {
+                if let fan = latest?.fanSpeed {
                     let y = yPositionForFanSpeed(fan, height: size.height)
                     fanPath.addLine(to: CGPoint(x: size.width, y: y))
                 }
@@ -197,7 +276,7 @@ struct HistoryGraphView: View {
                 )
 
                 // Current fan speed point (smaller)
-                if let last = sampled.last, let fan = last.fanSpeed {
+                if let fan = latest?.fanSpeed {
                     let y = yPositionForFanSpeed(fan, height: size.height)
                     let circle = Path(ellipseIn: CGRect(x: size.width - 3, y: y - 3, width: 6, height: 6))
                     context.fill(circle, with: .color(fanColor.opacity(0.7)))
@@ -205,14 +284,13 @@ struct HistoryGraphView: View {
             }
 
             // Current temperature point
-            if let last = sampled.last, let temp = last.temperature {
-                let y = yPositionForTemperature(temp, height: size.height)
+            if let temp = latest?.temperature {
+                let y = yPositionForTemperature(temp, range: range, height: size.height)
                 let circle = Path(ellipseIn: CGRect(x: size.width - 4, y: y - 4, width: 8, height: 8))
                 context.fill(circle, with: .color(.primary))
             }
 
             // Temperature range labels (left side)
-            let range = temperatureRange
             let labelStyle = Font.system(size: 8)
             let labelColor = Color.secondary.opacity(0.8)
             let maxLabel = Text("\(Int(range.max))°").font(labelStyle).foregroundColor(labelColor)
@@ -221,7 +299,7 @@ struct HistoryGraphView: View {
             context.draw(minLabel, at: CGPoint(x: 4, y: size.height - 4), anchor: .bottomLeading)
 
             // Fan speed range labels (right side)
-            if hasFanData {
+            if showFan {
                 let fanMaxLabel = Text("100%").font(labelStyle).foregroundColor(fanColor.opacity(0.8))
                 let fanMinLabel = Text("0%").font(labelStyle).foregroundColor(fanColor.opacity(0.8))
                 context.draw(fanMaxLabel, at: CGPoint(x: size.width - 4, y: 4), anchor: .topTrailing)
@@ -229,7 +307,7 @@ struct HistoryGraphView: View {
             }
 
             // Hover indicator
-            if let location = hoverLocation, let result = entryAt(x: location.x, width: size.width) {
+            if let location = hoverLocation, let result = entryAt(x: location.x, width: size.width, in: sampled) {
                 let entry = result.entry
                 let hoverX = result.xPosition
 
@@ -240,14 +318,14 @@ struct HistoryGraphView: View {
 
                 // Temperature hover point
                 if let temp = entry.temperature {
-                    let y = yPositionForTemperature(temp, height: size.height)
+                    let y = yPositionForTemperature(temp, range: range, height: size.height)
                     let circle = Path(ellipseIn: CGRect(x: hoverX - 4, y: y - 4, width: 8, height: 8))
                     context.fill(circle, with: .color(entry.pressure.color))
                     context.stroke(circle, with: .color(.primary), lineWidth: 1.5)
                 }
 
                 // Fan speed hover point (smaller, subtler)
-                if hasFanData, let fan = entry.fanSpeed {
+                if showFan, let fan = entry.fanSpeed {
                     let y = yPositionForFanSpeed(fan, height: size.height)
                     let circle = Path(ellipseIn: CGRect(x: hoverX - 3, y: y - 3, width: 6, height: 6))
                     context.fill(circle, with: .color(fanColor.opacity(0.8)))
@@ -270,22 +348,25 @@ struct HistoryGraphView: View {
     }
 
     @ViewBuilder
-    private var tooltipView: some View {
-        if let location = hoverLocation, let result = entryAt(x: location.x, width: graphWidth) {
+    private func tooltipView(_ sampled: [HistoryEntry]) -> some View {
+        if let location = hoverLocation, let result = entryAt(x: location.x, width: graphWidth, in: sampled) {
             let entry = result.entry
             if let temp = entry.temperature {
-                let timeAgo = Int(Date().timeIntervalSince(entry.timestamp))
-                let timeStr = timeAgo < 60 ? "\(timeAgo)s ago" : "\(timeAgo / 60)m ago"
+                let timeAgo = Date().timeIntervalSince(entry.timestamp)
+                let timeStr = timeAgo < 60 ? "\(Int(timeAgo))s ago" : formatTimeAgo(timeAgo)
+                // Aggregated points show the peak values of their time bucket
+                let peakStr = isAggregated ? "max " : ""
                 let fanStr = showFanSpeed ? entry.fanSpeed.map { " • Fan \(Int($0))%" } ?? "" : ""
+                let label = "\(peakStr)\(Int(temp))° • \(entry.pressure.displayName)\(fanStr) • \(timeStr)"
                 if #available(macOS 26.0, *) {
-                    Text("\(Int(temp))° • \(entry.pressure.displayName)\(fanStr) • \(timeStr)")
+                    Text(label)
                         .font(.system(size: 8, weight: .medium))
                         .padding(.horizontal, 6)
                         .padding(.vertical, 3)
                         .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 6))
                         .padding(4)
                 } else {
-                    Text("\(Int(temp))° • \(entry.pressure.displayName)\(fanStr) • \(timeStr)")
+                    Text(label)
                         .font(.system(size: 8, weight: .medium))
                         .padding(.horizontal, 6)
                         .padding(.vertical, 3)

@@ -30,18 +30,33 @@ struct MenuContentView: View {
             }
             .font(.headline)
 
-            if monitor.history.count >= 2 {
-                HistoryGraphView(history: monitor.history, showFanSpeed: monitor.showFanSpeed)
+            Picker("History", selection: $monitor.historyRange) {
+                ForEach(HistoryRange.allCases) { range in
+                    Text(range.rawValue).tag(range)
+                }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .controlSize(.small)
+
+            let visibleHistory = monitor.visibleHistory
+            if visibleHistory.count >= 2 {
+                HistoryGraphView(
+                    history: visibleHistory,
+                    showFanSpeed: monitor.showFanSpeed,
+                    maxGap: ThermalMonitor.maxSampleGapSeconds
+                )
             }
 
-            if !monitor.timeInEachState.isEmpty {
+            let statistics = monitor.stateStatistics
+            if !statistics.durations.isEmpty {
                 Divider()
-                Text("Statistics")
+                Text("Statistics (last \(monitor.historyRange.rawValue))")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 TimeBreakdownView(
-                    timeInEachState: monitor.timeInEachState,
-                    totalDuration: monitor.totalHistoryDuration
+                    timeInEachState: statistics.durations,
+                    totalDuration: statistics.total
                 )
             }
 

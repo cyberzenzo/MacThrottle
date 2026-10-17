@@ -5,8 +5,11 @@ import UserNotifications
 @Observable
 final class ThermalMonitor {
     // MARK: - Constants
-    private static let historyDurationSeconds: TimeInterval = 600  // 10 minutes
+    private static let historyDurationSeconds: TimeInterval = 24 * 3600  // 24 hours
     private static let pollIntervalSeconds: TimeInterval = 2.0
+    // Samples further apart than this mean the Mac slept or the app was not running
+    static let maxSampleGapSeconds: TimeInterval = 10
+    private static let compactionIntervalSeconds: TimeInterval = 3600
 
     // MARK: - State
     private(set) var pressure: ThermalPressure = .unknown
@@ -17,6 +20,8 @@ final class ThermalMonitor {
     private(set) var history: [HistoryEntry] = []
     private var timer: Timer?
     private var previousPressure: ThermalPressure = .unknown
+    private let store = HistoryStore()
+    private var lastCompaction = Date()
 
     // Notification settings
     var notifyOnHeavy: Bool = UserDefaults.standard.object(forKey: "notifyOnHeavy") as? Bool ?? true {
@@ -46,35 +51,44 @@ final class ThermalMonitor {
         didSet { UserDefaults.standard.set(showTemperatureInMenuBar, forKey: "showTemperatureInMenuBar") }
     }
 
-    var timeInEachState: [(pressure: ThermalPressure, duration: TimeInterval)] {
-        guard history.count >= 2 else { return [] }
+    // History settings
+    var historyRange: HistoryRange = HistoryRange(
+        rawValue: UserDefaults.standard.string(forKey: "historyRange") ?? ""
+    ) ?? .tenMinutes {
+        didSet { UserDefaults.standard.set(historyRange.rawValue, forKey: "historyRange") }
+    }
+
+    /// History entries within the selected range, oldest first.
+    var visibleHistory: [HistoryEntry] {
+        let cutoff = Date().addingTimeInterval(-historyRange.duration)
+        let start = history.firstIndex { $0.timestamp >= cutoff } ?? history.endIndex
+        return Array(history[start...])
+    }
+
+    /// Time spent in each state within the selected range, sorted by duration descending.
+    /// Gaps (sleep, app not running) are not counted, so `total` is the time actually observed.
+    var stateStatistics: (durations: [(pressure: ThermalPressure, duration: TimeInterval)], total: TimeInterval) {
+        let entries = visibleHistory
+        guard entries.count >= 2 else { return ([], 0) }
 
         var durations: [ThermalPressure: TimeInterval] = [:]
 
-        for i in 0..<(history.count - 1) {
-            let current = history[i]
-            let next = history[i + 1]
-            let duration = next.timestamp.timeIntervalSince(current.timestamp)
-            durations[current.pressure, default: 0] += duration
+        for (index, entry) in entries.enumerated() {
+            // The last state counts up to now
+            let end = index + 1 < entries.count ? entries[index + 1].timestamp : Date()
+            let duration = end.timeIntervalSince(entry.timestamp)
+            guard duration <= Self.maxSampleGapSeconds else { continue }
+            durations[entry.pressure, default: 0] += duration
         }
 
-        // Add time for the current (last) state up to now
-        if let last = history.last {
-            let duration = Date().timeIntervalSince(last.timestamp)
-            durations[last.pressure, default: 0] += duration
-        }
-
-        // Sort by duration descending
-        return durations.map { (pressure: $0.key, duration: $0.value) }
+        let sorted = durations.map { (pressure: $0.key, duration: $0.value) }
             .sorted { $0.duration > $1.duration }
-    }
-
-    var totalHistoryDuration: TimeInterval {
-        guard let first = history.first else { return 0 }
-        return Date().timeIntervalSince(first.timestamp)
+        return (sorted, sorted.reduce(0) { $0 + $1.duration })
     }
 
     init() {
+        history = store.load(newerThan: Date().addingTimeInterval(-Self.historyDurationSeconds))
+        store.compact(to: history)
         requestNotificationPermission()
         startMonitoring()
     }
@@ -138,10 +152,19 @@ final class ThermalMonitor {
             timestamp: Date()
         )
         history.append(entry)
+        store.append(entry)
 
-        // Trim old entries
+        // Trim old entries (history is sorted, so only a prefix can be expired)
         let cutoff = Date().addingTimeInterval(-Self.historyDurationSeconds)
-        history.removeAll { $0.timestamp < cutoff }
+        if let firstKept = history.firstIndex(where: { $0.timestamp >= cutoff }), firstKept > 0 {
+            history.removeFirst(firstKept)
+        }
+
+        // Drop expired lines from the history file once an hour
+        if Date().timeIntervalSince(lastCompaction) >= Self.compactionIntervalSeconds {
+            store.compact(to: history)
+            lastCompaction = Date()
+        }
     }
 
     private func shouldNotify(for pressure: ThermalPressure, previous: ThermalPressure) -> Bool {
