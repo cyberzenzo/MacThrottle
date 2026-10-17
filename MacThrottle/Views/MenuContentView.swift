@@ -69,10 +69,19 @@ struct MenuContentView: View {
                 Text("Statistics (last \(monitor.historyRange.rawValue))")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                Text("Thermal Pressure")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
                 TimeBreakdownView(
                     timeInEachState: statistics.durations,
                     totalDuration: statistics.total
                 )
+                if let speedStatistics = monitor.speedStatistics {
+                    Text("CPU Speed Limit")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                    SpeedBreakdownView(statistics: speedStatistics)
+                }
             }
 
             Divider()

@@ -67,6 +67,15 @@ enum HistoryRange: String, CaseIterable, Identifiable {
     }
 }
 
+struct SpeedStatistics {
+    /// Below this the CPU counts as speed limited
+    static let fullSpeedThreshold: Double = 95
+
+    let limitedDuration: TimeInterval
+    let totalDuration: TimeInterval
+    let lowest: Double
+}
+
 struct HistoryEntry {
     let pressure: ThermalPressure
     let temperature: Double?

@@ -27,7 +27,7 @@ struct MenuBarIcon: View {
         if showTemperature, let temp = temperature {
             parts.append("\(Int(temp.rounded()))°")
         }
-        return parts.joined(separator: " ")
+        return parts.joined(separator: " | ")
     }
 
     private var iconName: String {

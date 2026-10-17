@@ -35,6 +35,7 @@ final class CPUSpeedReader {
     private static let windowSamples = 5  // 10 s at the 2 s poll interval
     private static let minStateShare = 0.02  // Ignore clock steps used for less than 2% of active time
     private static let inactiveStates: Set<String> = ["IDLE", "DOWN", "OFF"]
+    private static let minSampleInterval: TimeInterval = 1  // Shorter deltas (e.g. right after launch) are not representative
 
     private struct Cluster {
         let level: Int  // hw.perflevelN
@@ -45,6 +46,7 @@ final class CPUSpeedReader {
     private var subscription: CFTypeRef?
     private var subscribedChannels: CFMutableDictionary?
     private var previousSample: CFDictionary?
+    private var previousSampleDate = Date()
     private var clusters: [String: Cluster] = [:]
     private var recentLimits: [[Int: Double]] = []  // Per sample: perf level -> highest MHz used
 
@@ -62,7 +64,12 @@ final class CPUSpeedReader {
             let current = api.createSamples(subscription, subscribedChannels, nil)?.takeRetainedValue()
         else { return nil }
 
-        defer { previousSample = current }
+        let now = Date()
+        guard now.timeIntervalSince(previousSampleDate) >= Self.minSampleInterval else { return nil }
+        defer {
+            previousSample = current
+            previousSampleDate = now
+        }
         guard
             let previousSample,
             let delta = api.createSamplesDelta(previousSample, current, nil)?.takeRetainedValue(),
@@ -143,6 +150,7 @@ final class CPUSpeedReader {
         self.subscription = subscription
         self.subscribedChannels = subscribedChannels
         previousSample = first
+        previousSampleDate = Date()
     }
 
     private func activeResidencies(of channel: CFDictionary, api: IOReportAPI) -> [Int64] {
