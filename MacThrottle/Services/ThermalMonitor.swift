@@ -101,21 +101,33 @@ final class ThermalMonitor {
         var limited: TimeInterval = 0
         var total: TimeInterval = 0
         var lowest: Double?
+        var lowestDuration: TimeInterval = 0
 
         for (index, entry) in entries.enumerated() {
-            guard let speed = entry.speedLimit else { continue }
-            lowest = min(lowest ?? speed, speed)
+            guard let speed = entry.speedLimit?.rounded() else { continue }
+            if speed < lowest ?? .infinity {
+                lowest = speed
+                lowestDuration = 0
+            }
             let end = index + 1 < entries.count ? entries[index + 1].timestamp : Date()
             let duration = end.timeIntervalSince(entry.timestamp)
             guard duration <= Self.maxSampleGapSeconds else { continue }
             total += duration
+            if speed == lowest {
+                lowestDuration += duration
+            }
             if speed < SpeedStatistics.fullSpeedThreshold {
                 limited += duration
             }
         }
 
         guard let lowest, total > 0 else { return nil }
-        return SpeedStatistics(limitedDuration: limited, totalDuration: total, lowest: lowest)
+        return SpeedStatistics(
+            limitedDuration: limited,
+            totalDuration: total,
+            lowest: lowest,
+            lowestDuration: lowestDuration
+        )
     }
 
     init() {

@@ -71,7 +71,7 @@ struct MenuContentView: View {
                     .foregroundStyle(.secondary)
                 Text("Thermal Pressure")
                     .font(.caption2)
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(.secondary)
                 TimeBreakdownView(
                     timeInEachState: statistics.durations,
                     totalDuration: statistics.total
@@ -79,7 +79,7 @@ struct MenuContentView: View {
                 if let speedStatistics = monitor.speedStatistics {
                     Text("CPU Speed Limit")
                         .font(.caption2)
-                        .foregroundStyle(.tertiary)
+                        .foregroundStyle(.secondary)
                     SpeedBreakdownView(statistics: speedStatistics)
                 }
             }
@@ -157,8 +157,10 @@ struct CPUSpeedView: View {
         VStack(alignment: .leading, spacing: 3) {
             if let speed {
                 row("Speed Limit") {
+                    Circle()
+                        .fill(colorForSpeedLimit(speed.speedLimit))
+                        .frame(width: 7, height: 7)
                     Text("\(Int(speed.speedLimit.rounded()))%")
-                        .foregroundColor(colorForSpeedLimit(speed.speedLimit))
                         .fontWeight(.semibold)
                 }
                 ForEach(speed.coreTypes, id: \.name) { coreType in

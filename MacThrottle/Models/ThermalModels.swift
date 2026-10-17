@@ -74,6 +74,7 @@ struct SpeedStatistics {
     let limitedDuration: TimeInterval
     let totalDuration: TimeInterval
     let lowest: Double
+    let lowestDuration: TimeInterval  // Time spent at the lowest value (whole percent)
 }
 
 struct HistoryEntry {

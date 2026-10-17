@@ -504,11 +504,16 @@ struct SpeedBreakdownView: View {
                 Circle()
                     .fill(colorForSpeedLimit(statistics.lowest))
                     .frame(width: 8, height: 8)
-                Text("Lowest")
+                HStack(spacing: 2) {
+                    Text("Lowest")
+                    Text("\(Int(statistics.lowest))%")
+                        .fontWeight(.semibold)
+                }
                 Spacer()
-                Text("\(Int(statistics.lowest.rounded()))%")
-                    .foregroundColor(colorForSpeedLimit(statistics.lowest))
-                    .fontWeight(.semibold)
+                Text(formatDuration(statistics.lowestDuration))
+                    .foregroundStyle(.secondary)
+                Text("(\(Int((statistics.lowestDuration / statistics.totalDuration * 100).rounded()))%)")
+                    .foregroundStyle(.secondary)
                     .frame(width: 45, alignment: .trailing)
             }
         }
