@@ -17,6 +17,9 @@ final class ThermalMonitor {
     private(set) var temperatureSource: String?  // SMC key or "HID"
     private(set) var fanSpeed: Double?  // Percentage 0-100%
     private(set) var hasFans: Bool = false
+    private(set) var cpuSpeed: CPUSpeedReading?
+    private(set) var availableCPUs: Int?
+    let totalCPUs: Int? = CPUSpeedReader.sysctlInt("hw.ncpu")
     private(set) var history: [HistoryEntry] = []
     private var timer: Timer?
     private var previousPressure: ThermalPressure = .unknown
@@ -49,6 +52,11 @@ final class ThermalMonitor {
     // swiftlint:disable:next line_length
     var showTemperatureInMenuBar: Bool = UserDefaults.standard.object(forKey: "showTemperatureInMenuBar") as? Bool ?? false {
         didSet { UserDefaults.standard.set(showTemperatureInMenuBar, forKey: "showTemperatureInMenuBar") }
+    }
+
+    // swiftlint:disable:next line_length
+    var showSpeedLimitInMenuBar: Bool = UserDefaults.standard.object(forKey: "showSpeedLimitInMenuBar") as? Bool ?? true {
+        didSet { UserDefaults.standard.set(showSpeedLimitInMenuBar, forKey: "showSpeedLimitInMenuBar") }
     }
 
     // History settings
@@ -144,11 +152,16 @@ final class ThermalMonitor {
             if !hasFans { hasFans = true }
         }
 
+        // Read CPU speed limit and active core count
+        cpuSpeed = CPUSpeedReader.shared.read()
+        availableCPUs = CPUSpeedReader.sysctlInt("hw.activecpu")
+
         // Record history
         let entry = HistoryEntry(
             pressure: newPressure,
             temperature: temperature,
             fanSpeed: fanSpeed,
+            speedLimit: cpuSpeed?.speedLimit,
             timestamp: Date()
         )
         history.append(entry)

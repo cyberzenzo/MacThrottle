@@ -20,7 +20,8 @@ struct MacThrottleApp: App {
             MenuBarIcon(
                 pressure: monitor.pressure,
                 temperature: monitor.showTemperatureInMenuBar ? monitor.temperature : nil,
-                showTemperature: monitor.showTemperatureInMenuBar
+                showTemperature: monitor.showTemperatureInMenuBar,
+                speedLimit: monitor.showSpeedLimitInMenuBar ? monitor.cpuSpeed?.speedLimit : nil
             )
         }
         .menuBarExtraStyle(.window)

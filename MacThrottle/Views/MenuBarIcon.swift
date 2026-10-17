@@ -4,6 +4,7 @@ struct MenuBarIcon: View {
     let pressure: ThermalPressure
     let temperature: Double?
     let showTemperature: Bool
+    var speedLimit: Double?
 
     var body: some View {
         Image(systemName: iconName)
@@ -12,9 +13,21 @@ struct MenuBarIcon: View {
             .onAppear {
                 getStatusItems()?.first?.button?.font = .monospacedDigitSystemFont(ofSize: 13, weight: .regular)
             }
-        if showTemperature, let temp = temperature {
-            Text("\(Int(temp.rounded()))°")
+        if !label.isEmpty {
+            Text(label)
         }
+    }
+
+    // One text, because the menu bar shows only one image and one text
+    private var label: String {
+        var parts: [String] = []
+        if let speedLimit {
+            parts.append("\(Int(speedLimit.rounded()))%")
+        }
+        if showTemperature, let temp = temperature {
+            parts.append("\(Int(temp.rounded()))°")
+        }
+        return parts.joined(separator: " ")
     }
 
     private var iconName: String {

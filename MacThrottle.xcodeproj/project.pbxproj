@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		A1000001229E8F1100000001 /* MacThrottleApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000002229E8F1100000001 /* MacThrottleApp.swift */; };
 		A1000098229E8F1100000001 /* HistoryStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000099229E8F1100000001 /* HistoryStore.swift */; };
+		A1000096229E8F1100000001 /* CPUSpeedReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000097229E8F1100000001 /* CPUSpeedReader.swift */; };
 		A1000003229E8F1100000001 /* ThermalMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000004229E8F1100000001 /* ThermalMonitor.swift */; };
 		A1000015229E8F1100000001 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A1000016229E8F1100000001 /* Assets.xcassets */; };
 		A1000017229E8F1100000001 /* TemperatureReaders.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000018229E8F1100000001 /* TemperatureReaders.swift */; };
@@ -25,6 +26,7 @@
 /* Begin PBXFileReference section */
 		A1000002229E8F1100000001 /* MacThrottleApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacThrottleApp.swift; sourceTree = "<group>"; };
 		A1000099229E8F1100000001 /* HistoryStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryStore.swift; sourceTree = "<group>"; };
+		A1000097229E8F1100000001 /* CPUSpeedReader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CPUSpeedReader.swift; sourceTree = "<group>"; };
 		A1000004229E8F1100000001 /* ThermalMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThermalMonitor.swift; sourceTree = "<group>"; };
 		A1000005229E8F1100000001 /* MacThrottle.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = MacThrottle.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		A1000006229E8F1100000001 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
@@ -105,6 +107,7 @@
 			isa = PBXGroup;
 			children = (
 				A1000099229E8F1100000001 /* HistoryStore.swift */,
+				A1000097229E8F1100000001 /* CPUSpeedReader.swift */,
 				A1000004229E8F1100000001 /* ThermalMonitor.swift */,
 				A1000028229E8F1100000001 /* ThermalPressureReader.swift */,
 				A1000018229E8F1100000001 /* TemperatureReaders.swift */,
@@ -190,6 +193,7 @@
 				A1000024229E8F1100000001 /* AboutView.swift in Sources */,
 				A1000019229E8F1100000001 /* HistoryViews.swift in Sources */,
 				A1000098229E8F1100000001 /* HistoryStore.swift in Sources */,
+				A1000096229E8F1100000001 /* CPUSpeedReader.swift in Sources */,
 				A1000003229E8F1100000001 /* ThermalMonitor.swift in Sources */,
 				A1000029229E8F1100000001 /* ThermalPressureReader.swift in Sources */,
 				A1000017229E8F1100000001 /* TemperatureReaders.swift in Sources */,

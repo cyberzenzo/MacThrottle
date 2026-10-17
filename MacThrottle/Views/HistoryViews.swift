@@ -65,6 +65,7 @@ struct HistoryGraphView: View {
                     pressure: entry.pressure.severity > existing.pressure.severity ? entry.pressure : existing.pressure,
                     temperature: peak(existing.temperature, entry.temperature),
                     fanSpeed: peak(existing.fanSpeed, entry.fanSpeed),
+                    speedLimit: lowest(existing.speedLimit, entry.speedLimit),
                     timestamp: existing.timestamp
                 )
             } else {
@@ -84,12 +85,22 @@ struct HistoryGraphView: View {
         return max(lhs, rhs)
     }
 
+    private func lowest(_ lhs: Double?, _ rhs: Double?) -> Double? {
+        guard let lhs else { return rhs }
+        guard let rhs else { return lhs }
+        return min(lhs, rhs)
+    }
+
     private func temperatureRange(_ sampled: [HistoryEntry]) -> (min: Double, max: Double) {
         let temps = sampled.compactMap { $0.temperature }
         guard !temps.isEmpty else { return (Self.minTemperatureBound, 100) }
         let minTemp = max(Self.minTemperatureBound, (temps.min() ?? Self.minTemperatureBound) - Self.temperaturePadding)
         let maxTemp = min(Self.maxTemperatureBound, (temps.max() ?? 100) + Self.temperaturePadding)
         return (minTemp, maxTemp)
+    }
+
+    private func hasSpeedData(_ sampled: [HistoryEntry]) -> Bool {
+        sampled.contains { $0.speedLimit != nil }
     }
 
     private func hasFanData(_ sampled: [HistoryEntry]) -> Bool {
@@ -166,6 +177,7 @@ struct HistoryGraphView: View {
         let latest = history.last
         let range = temperatureRange(sampled)
         let showFan = hasFanData(sampled)
+        let showSpeed = hasSpeedData(sampled)
         let gapThreshold = gapThreshold
         // How far a point before a gap extends to the right
         let pointDuration = max(maxGap / 5, bucketDuration)
@@ -283,6 +295,36 @@ struct HistoryGraphView: View {
                 }
             }
 
+            // Draw speed limit line (shares the 0-100% scale with the fan speed)
+            let speedColor = Color.blue
+            if showSpeed {
+                var speedPath = Path()
+                var startNewSpeedSubpath = true
+
+                for (i, entry) in sampled.enumerated() {
+                    guard let speed = entry.speedLimit else { continue }
+
+                    let point = CGPoint(
+                        x: xPosition(entry.timestamp),
+                        y: yPositionForFanSpeed(speed, height: size.height)
+                    )
+
+                    if startNewSpeedSubpath || isGap(before: i) {
+                        speedPath.move(to: point)
+                        startNewSpeedSubpath = false
+                    } else {
+                        speedPath.addLine(to: point)
+                    }
+                }
+
+                if let speed = latest?.speedLimit {
+                    let y = yPositionForFanSpeed(speed, height: size.height)
+                    speedPath.addLine(to: CGPoint(x: size.width, y: y))
+                }
+
+                context.stroke(speedPath, with: .color(speedColor.opacity(0.8)), lineWidth: 1.5)
+            }
+
             // Current temperature point
             if let temp = latest?.temperature {
                 let y = yPositionForTemperature(temp, range: range, height: size.height)
@@ -298,10 +340,11 @@ struct HistoryGraphView: View {
             context.draw(maxLabel, at: CGPoint(x: 4, y: 4), anchor: .topLeading)
             context.draw(minLabel, at: CGPoint(x: 4, y: size.height - 4), anchor: .bottomLeading)
 
-            // Fan speed range labels (right side)
-            if showFan {
-                let fanMaxLabel = Text("100%").font(labelStyle).foregroundColor(fanColor.opacity(0.8))
-                let fanMinLabel = Text("0%").font(labelStyle).foregroundColor(fanColor.opacity(0.8))
+            // Fan speed and speed limit range labels (right side)
+            if showFan || showSpeed {
+                let percentColor = showFan ? fanColor : speedColor
+                let fanMaxLabel = Text("100%").font(labelStyle).foregroundColor(percentColor.opacity(0.8))
+                let fanMinLabel = Text("0%").font(labelStyle).foregroundColor(percentColor.opacity(0.8))
                 context.draw(fanMaxLabel, at: CGPoint(x: size.width - 4, y: 4), anchor: .topTrailing)
                 context.draw(fanMinLabel, at: CGPoint(x: size.width - 4, y: size.height - 4), anchor: .bottomTrailing)
             }
@@ -357,7 +400,9 @@ struct HistoryGraphView: View {
                 // Aggregated points show the peak values of their time bucket
                 let peakStr = isAggregated ? "max " : ""
                 let fanStr = showFanSpeed ? entry.fanSpeed.map { " • Fan \(Int($0))%" } ?? "" : ""
-                let label = "\(peakStr)\(Int(temp))° • \(entry.pressure.displayName)\(fanStr) • \(timeStr)"
+                // Aggregated points show the lowest speed limit of their time bucket
+                let speedStr = entry.speedLimit.map { " • Speed \(isAggregated ? "min " : "")\(Int($0.rounded()))%" } ?? ""
+                let label = "\(peakStr)\(Int(temp))° • \(entry.pressure.displayName)\(speedStr)\(fanStr) • \(timeStr)"
                 if #available(macOS 26.0, *) {
                     Text(label)
                         .font(.system(size: 8, weight: .medium))

@@ -15,6 +15,10 @@ A lightweight macOS menu bar app that monitors thermal pressure and alerts you w
 - Displays thermal pressure state in the menu bar using different thermometer icons
 - Shows CPU core temperature (reads directly from SMC)
 - Shows fan speed percentage (on Macs with fans)
+- Shows the CPU speed limit on Apple Silicon: the share of the maximum clock the cores can currently reach,
+  per core type (e.g. 4.61 GHz Super / 4.38 GHz Performance cores on M5 Max), plus available CPUs.
+  Measured from IOReport clock-state residency; it drops below 100% when macOS limits the speed
+  because of heat or power, often while the thermal pressure is still Nominal
 - History graph showing thermal state, temperature, and fan speed over the last 10 minutes, 1, 6 or 24 hours
 - History is saved to `~/Library/Application Support/MacThrottle/history.csv`, so it survives restarts; sleep shows as a gap
 - Statistics showing time spent in each thermal state for the selected range

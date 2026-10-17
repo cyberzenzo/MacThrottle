@@ -1,7 +1,7 @@
 import Foundation
 
 /// Persists the thermal history so it survives app restarts and reboots.
-/// The file is append-only CSV, one sample per line: `timestamp,pressure,temperature,fan`.
+/// The file is append-only CSV, one sample per line: `timestamp,pressure,temperature,fan,speed`.
 final class HistoryStore {
     private let fileURL: URL
     private var handle: FileHandle?
@@ -57,13 +57,14 @@ final class HistoryStore {
         let timestamp = String(format: "%.0f", entry.timestamp.timeIntervalSince1970)
         let temperature = entry.temperature.map { String(format: "%.1f", $0) } ?? ""
         let fan = entry.fanSpeed.map { String(format: "%.0f", $0) } ?? ""
-        return "\(timestamp),\(entry.pressure.rawValue),\(temperature),\(fan)"
+        let speed = entry.speedLimit.map { String(format: "%.0f", $0) } ?? ""
+        return "\(timestamp),\(entry.pressure.rawValue),\(temperature),\(fan),\(speed)"
     }
 
     private static func parse(_ line: Substring) -> HistoryEntry? {
         let fields = line.split(separator: ",", omittingEmptySubsequences: false)
         guard
-            fields.count == 4,
+            fields.count == 4 || fields.count == 5,
             let seconds = Double(fields[0]),
             let pressure = ThermalPressure(rawValue: String(fields[1]))
         else { return nil }
@@ -72,6 +73,7 @@ final class HistoryStore {
             pressure: pressure,
             temperature: Double(fields[2]),
             fanSpeed: Double(fields[3]),
+            speedLimit: fields.count == 5 ? Double(fields[4]) : nil,
             timestamp: Date(timeIntervalSince1970: seconds)
         )
     }

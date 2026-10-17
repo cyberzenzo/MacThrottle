@@ -1,5 +1,14 @@
 import SwiftUI
 
+func colorForSpeedLimit(_ percentage: Double) -> Color {
+    switch percentage {
+    case 95...: return .green
+    case 85..<95: return .yellow
+    case 70..<85: return .orange
+    default: return .red
+    }
+}
+
 func colorForTemperature(_ temp: Double) -> Color {
     switch temp {
     case ..<60: return .green
@@ -29,6 +38,12 @@ struct MenuContentView: View {
                 }
             }
             .font(.headline)
+
+            CPUSpeedView(
+                speed: monitor.cpuSpeed,
+                availableCPUs: monitor.availableCPUs,
+                totalCPUs: monitor.totalCPUs
+            )
 
             Picker("History", selection: $monitor.historyRange) {
                 ForEach(HistoryRange.allCases) { range in
@@ -80,6 +95,9 @@ struct MenuContentView: View {
             Toggle("Show Temperature in Menu Bar", isOn: $monitor.showTemperatureInMenuBar)
                 .controlSize(.small)
 
+            Toggle("Show Speed Limit in Menu Bar", isOn: $monitor.showSpeedLimitInMenuBar)
+                .controlSize(.small)
+
             Divider()
 
             Text("Notifications")
@@ -118,5 +136,51 @@ struct MenuContentView: View {
     private func openAboutWindow() {
         openWindow(id: "about")
         NSApp.activate(ignoringOtherApps: true)
+    }
+}
+
+struct CPUSpeedView: View {
+    let speed: CPUSpeedReading?
+    let availableCPUs: Int?
+    let totalCPUs: Int?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            if let speed {
+                row("Speed Limit") {
+                    Text("\(Int(speed.speedLimit.rounded()))%")
+                        .foregroundColor(colorForSpeedLimit(speed.speedLimit))
+                        .fontWeight(.semibold)
+                }
+                ForEach(speed.coreTypes, id: \.name) { coreType in
+                    row("\(coreType.name) Cores (\(coreType.coreCount))") {
+                        Text(String(format: "%.2f GHz", coreType.limitMHz / 1000))
+                        Text("(\(Int(coreType.percentage.rounded()))%)")
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+            if let availableCPUs, let totalCPUs {
+                row("Available CPUs") {
+                    Text("\(availableCPUs) / \(totalCPUs)")
+                }
+            }
+        }
+        .font(.caption)
+        .monospacedDigit()
+        .help(
+            "Speed Limit: the highest CPU clock the cores reached in the last 10 seconds, "
+                + "as a share of the maximum. When macOS limits the speed because of heat or power, "
+                + "it drops below 100%. Light work can also show lower values for a moment."
+        )
+    }
+
+    private func row<Value: View>(_ label: String, @ViewBuilder value: () -> Value) -> some View {
+        HStack(spacing: 4) {
+            Text(label)
+                .foregroundStyle(.secondary)
+            Spacer()
+            value()
+        }
     }
 }
