@@ -67,14 +67,90 @@ enum HistoryRange: String, CaseIterable, Identifiable {
     }
 }
 
-struct SpeedStatistics {
-    /// Below this the CPU counts as speed limited
-    static let fullSpeedThreshold: Double = 95
+/// Speed limit ranges for the statistics breakdown.
+enum SpeedBand: CaseIterable {
+    case full
+    case above90
+    case above80
+    case above70
+    case above60
+    case below60
 
-    let limitedDuration: TimeInterval
+    init(speed: Double) {
+        switch speed {
+        case 95...: self = .full
+        case 90..<95: self = .above90
+        case 80..<90: self = .above80
+        case 70..<80: self = .above70
+        case 60..<70: self = .above60
+        default: self = .below60
+        }
+    }
+
+    var title: String {
+        switch self {
+        case .full: return "Full speed"
+        case .above90: return "90\u{2013}95%"
+        case .above80: return "80\u{2013}90%"
+        case .above70: return "70\u{2013}80%"
+        case .above60: return "60\u{2013}70%"
+        case .below60: return "Below 60%"
+        }
+    }
+
+    var detail: String? {
+        self == .full ? "(\u{2265}95%)" : nil
+    }
+
+    var color: Color {
+        switch self {
+        case .full: return .green
+        case .above90: return .yellow
+        case .above80: return .orange
+        case .above70: return .red
+        case .above60: return .pink
+        case .below60: return .purple
+        }
+    }
+}
+
+struct SpeedStatistics {
+    let bandDurations: [SpeedBand: TimeInterval]
     let totalDuration: TimeInterval
     let lowest: Double
     let lowestDuration: TimeInterval  // Time spent at the lowest value (whole percent)
+
+    /// Time spent in each speed band and at the lowest speed limit.
+    /// Gaps longer than `maxGap` (sleep, app not running) are not counted.
+    init?(entries: [HistoryEntry], maxGap: TimeInterval, now: Date = Date()) {
+        var bandDurations: [SpeedBand: TimeInterval] = [:]
+        var total: TimeInterval = 0
+        var lowest: Double?
+        var lowestDuration: TimeInterval = 0
+
+        for (index, entry) in entries.enumerated() {
+            guard let speed = entry.speedLimit?.rounded() else { continue }
+            if speed < lowest ?? .infinity {
+                lowest = speed
+                lowestDuration = 0
+            }
+            // The last sample counts up to now
+            let end = index + 1 < entries.count ? entries[index + 1].timestamp : now
+            let duration = end.timeIntervalSince(entry.timestamp)
+            guard duration <= maxGap else { continue }
+            total += duration
+            bandDurations[SpeedBand(speed: speed), default: 0] += duration
+            if speed == lowest {
+                lowestDuration += duration
+            }
+        }
+
+        guard let lowest, total > 0 else { return nil }
+        self.bandDurations = bandDurations
+        self.totalDuration = total
+        self.lowest = lowest
+        self.lowestDuration = lowestDuration
+    }
 }
 
 struct HistoryEntry {

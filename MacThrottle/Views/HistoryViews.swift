@@ -492,51 +492,66 @@ struct SpeedBreakdownView: View {
     let statistics: SpeedStatistics
 
     var body: some View {
-        let limitedShare = statistics.limitedDuration / statistics.totalDuration * 100
-        let threshold = Int(SpeedStatistics.fullSpeedThreshold)
+        let fullDuration = statistics.bandDurations[.full] ?? 0
 
         VStack(alignment: .leading, spacing: 4) {
-            row(color: .green, title: "Full speed", detail: "(\u{2265}\(threshold)%)",
-                duration: statistics.totalDuration - statistics.limitedDuration, share: 100 - limitedShare)
-            row(color: .orange, title: "Limited", detail: "(<\(threshold)%)",
-                duration: statistics.limitedDuration, share: limitedShare)
-            HStack {
-                Circle()
-                    .fill(colorForSpeedLimit(statistics.lowest))
-                    .frame(width: 8, height: 8)
-                HStack(spacing: 2) {
-                    Text("Lowest")
-                    Text("\(Int(statistics.lowest))%")
-                        .fontWeight(.semibold)
+            row(color: SpeedBand.full.color, duration: fullDuration) {
+                Text(SpeedBand.full.title)
+                Text(SpeedBand.full.detail ?? "")
+                    .foregroundStyle(.secondary)
+            }
+            row(color: .orange, duration: statistics.totalDuration - fullDuration) {
+                Text("Limited")
+                Text("(<95%)")
+                    .foregroundStyle(.secondary)
+            }
+            // Breakdown of the limited time by speed band
+            ForEach(SpeedBand.allCases.filter { $0 != .full }, id: \.self) { band in
+                row(color: band.color, duration: statistics.bandDurations[band] ?? 0, indented: true) {
+                    Text(band.title)
                 }
-                Spacer()
-                Text(formatDuration(statistics.lowestDuration))
-                    .foregroundStyle(.secondary)
-                Text("(\(Int((statistics.lowestDuration / statistics.totalDuration * 100).rounded()))%)")
-                    .foregroundStyle(.secondary)
-                    .frame(width: 45, alignment: .trailing)
+            }
+            row(color: colorForSpeedLimit(statistics.lowest), duration: statistics.lowestDuration) {
+                Text("Lowest")
+                Text("\(Int(statistics.lowest))%")
+                    .fontWeight(.semibold)
             }
         }
         .font(.caption)
     }
 
-    private func row(color: Color, title: String, detail: String, duration: TimeInterval, share: Double) -> some View {
+    private func row<Title: View>(
+        color: Color,
+        duration: TimeInterval,
+        indented: Bool = false,
+        @ViewBuilder title: () -> Title
+    ) -> some View {
         HStack {
             Circle()
                 .fill(color)
-                .frame(width: 8, height: 8)
+                .frame(width: indented ? 6 : 8, height: indented ? 6 : 8)
+                .frame(width: 8)
             HStack(spacing: 2) {
-                Text(title)
-                Text(detail)
-                    .foregroundStyle(.secondary)
+                title()
             }
+            .foregroundStyle(indented ? .secondary : .primary)
             Spacer()
             Text(formatDuration(duration))
                 .foregroundStyle(.secondary)
-            Text("(\(Int(share.rounded()))%)")
+            Text(shareText(duration))
                 .foregroundStyle(.secondary)
                 .frame(width: 45, alignment: .trailing)
         }
+        .padding(.leading, indented ? 14 : 0)
+    }
+
+    /// Short but non-zero times show "<1%" instead of a misleading "0%".
+    private func shareText(_ duration: TimeInterval) -> String {
+        let share = duration / statistics.totalDuration * 100
+        if duration > 0 && share < 0.5 {
+            return "(<1%)"
+        }
+        return "(\(Int(share.rounded()))%)"
     }
 }
 

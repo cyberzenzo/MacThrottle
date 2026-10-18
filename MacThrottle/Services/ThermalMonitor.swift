@@ -94,40 +94,9 @@ final class ThermalMonitor {
         return (sorted, sorted.reduce(0) { $0 + $1.duration })
     }
 
-    /// Time the CPU speed was limited within the selected range, and the lowest speed limit.
-    /// Gaps (sleep, app not running) are not counted.
+    /// Time spent in each speed band within the selected range, and the lowest speed limit.
     var speedStatistics: SpeedStatistics? {
-        let entries = visibleHistory
-        var limited: TimeInterval = 0
-        var total: TimeInterval = 0
-        var lowest: Double?
-        var lowestDuration: TimeInterval = 0
-
-        for (index, entry) in entries.enumerated() {
-            guard let speed = entry.speedLimit?.rounded() else { continue }
-            if speed < lowest ?? .infinity {
-                lowest = speed
-                lowestDuration = 0
-            }
-            let end = index + 1 < entries.count ? entries[index + 1].timestamp : Date()
-            let duration = end.timeIntervalSince(entry.timestamp)
-            guard duration <= Self.maxSampleGapSeconds else { continue }
-            total += duration
-            if speed == lowest {
-                lowestDuration += duration
-            }
-            if speed < SpeedStatistics.fullSpeedThreshold {
-                limited += duration
-            }
-        }
-
-        guard let lowest, total > 0 else { return nil }
-        return SpeedStatistics(
-            limitedDuration: limited,
-            totalDuration: total,
-            lowest: lowest,
-            lowestDuration: lowestDuration
-        )
+        SpeedStatistics(entries: visibleHistory, maxGap: Self.maxSampleGapSeconds)
     }
 
     init() {

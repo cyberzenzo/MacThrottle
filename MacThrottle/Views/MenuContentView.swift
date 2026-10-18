@@ -1,12 +1,7 @@
 import SwiftUI
 
 func colorForSpeedLimit(_ percentage: Double) -> Color {
-    switch percentage {
-    case 95...: return .green
-    case 85..<95: return .yellow
-    case 70..<85: return .orange
-    default: return .red
-    }
+    SpeedBand(speed: percentage.rounded()).color
 }
 
 func colorForTemperature(_ temp: Double) -> Color {
